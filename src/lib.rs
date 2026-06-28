@@ -9,3 +9,7 @@ pub mod store;
 pub mod import;
 pub mod location;
 pub mod sun;
+pub mod profile;
+pub mod feature;
+pub mod session;
+pub mod preference;

@@ -1,4 +1,4 @@
-use crate::{grade::VGrade, location::Aspect};
+use crate::{ grade::VGrade, location::Aspect, feature::Feature };
 use std::collections::HashSet;
 
 #[derive(Debug)]
@@ -8,14 +8,6 @@ pub struct Problem {
   status: ProblemStatus,
   features: HashSet<Feature>,
   aspect: Option<Aspect>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Feature {
-  BadLanding,
-  Highball,
-  HeightDependent,
-  Technical,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
