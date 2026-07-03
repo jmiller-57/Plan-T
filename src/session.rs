@@ -1,9 +1,19 @@
-use crate::{ feature::Feature, preference::Preference };
+use crate::{ feature::Feature, grade::GradeRange, preference::Preference };
 use std::collections::HashMap;
+
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionMode {
+  #[default] Flexible, // up for anything
+  Cruise,   // easy climbing, well below flash grade
+  Send,     // moderate climbing, in around flash grade
+  Project,  // hard climbing, near max grade
+}
 
 #[derive(Debug, Default)]
 pub struct SessionIntent {
   feature_overrides: HashMap<Feature, Preference>,
+  session_mode: SessionMode,
+  grade_range: Option<GradeRange>,
 }
 
 impl SessionIntent {
@@ -17,6 +27,22 @@ impl SessionIntent {
 
   pub fn effective_preference(&self, feat: Feature, defaults: &HashMap<Feature, Preference>) -> Option<Preference> {
     self.feature_overrides.get(&feat).or(defaults.get(&feat)).copied()
+  }
+
+  pub fn set_session_mode(&mut self, mode: SessionMode) {
+    self.session_mode = mode;
+  }
+
+  pub fn set_desired_grade_range(&mut self, range: GradeRange) {
+    self.grade_range = Some(range);
+  }
+
+  pub fn session_mode(&self) -> SessionMode {
+    self.session_mode
+  }
+
+  pub fn grade_range(&self) -> Option<GradeRange> {
+    self.grade_range
   }
 }
 
@@ -46,7 +72,7 @@ mod tests {
     let cp = climber_profile();
     let si = session_intent();
     let updated_pref = Preference::new(0.0, true).unwrap();
-    assert_eq!(si.effective_preference(Feature::Highball, cp.get_default_feature_preferences()), Some(updated_pref));    
+    assert_eq!(si.effective_preference(Feature::Highball, cp.default_feature_preferences()), Some(updated_pref));    
   } 
 
   #[test]
@@ -54,13 +80,13 @@ mod tests {
     let cp = climber_profile();
     let si = session_intent();
     let pref = Preference::new(0.5, false).unwrap();
-    assert_eq!(si.effective_preference(Feature::Technical, cp.get_default_feature_preferences()), Some(pref));
+    assert_eq!(si.effective_preference(Feature::Technical, cp.default_feature_preferences()), Some(pref));
   }
 
   #[test]
   fn unset_returns_none() {
     let cp = climber_profile();
     let si = session_intent();
-    assert_eq!(si.effective_preference(Feature::HeightDependent, cp.get_default_feature_preferences()), None);
+    assert_eq!(si.effective_preference(Feature::HeightDependent, cp.default_feature_preferences()), None);
   }
 }
