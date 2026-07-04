@@ -3,17 +3,35 @@ use std::collections::HashMap;
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionMode {
-  #[default] Flexible, // up for anything
-  Cruise,   // easy climbing, well below flash grade
-  Send,     // moderate climbing, in around flash grade
-  Project,  // hard climbing, near max grade
+  /// Up for anything: [VB, MaxGrade]
+  #[default] Flexible,
+
+  /// Easy climbing, well below flash grade: [VB, FlashGrade - 2]
+  Cruise,
+
+  /// Moderate climbing, in around flash grade: [FlashGrade - 2, FlashGrade + 1]
+  SendVolume,
+
+  /// Hard climbing, near max grade: [MaxGrade - 2, MaxGrade + 1]
+  Project,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GradeDesire {
+  FromMode(SessionMode),
+  Explicit(GradeRange),
+}
+
+impl Default for GradeDesire {
+  fn default() -> Self {
+      Self::FromMode(SessionMode::Flexible)
+  }
 }
 
 #[derive(Debug, Default)]
 pub struct SessionIntent {
   feature_overrides: HashMap<Feature, Preference>,
-  session_mode: SessionMode,
-  grade_range: Option<GradeRange>,
+  grade_desire: GradeDesire,
 }
 
 impl SessionIntent {
@@ -29,20 +47,12 @@ impl SessionIntent {
     self.feature_overrides.get(&feat).or(defaults.get(&feat)).copied()
   }
 
-  pub fn set_session_mode(&mut self, mode: SessionMode) {
-    self.session_mode = mode;
+  pub fn set_grade_desire(&mut self, grade_desire: GradeDesire) {
+    self.grade_desire = grade_desire;
   }
 
-  pub fn set_desired_grade_range(&mut self, range: GradeRange) {
-    self.grade_range = Some(range);
-  }
-
-  pub fn session_mode(&self) -> SessionMode {
-    self.session_mode
-  }
-
-  pub fn grade_range(&self) -> Option<GradeRange> {
-    self.grade_range
+  pub fn grade_desire(&self) -> GradeDesire {
+    self.grade_desire
   }
 }
 

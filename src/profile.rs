@@ -14,8 +14,8 @@ pub struct ClimberProfile {
 
   /// measured as an integer in inches
   wingspan: Option<u8>,
-  max_grade: VGrade,
   flash_grade: VGrade,
+  max_grade: VGrade,
   default_feature_preferences: HashMap<Feature, Preference>,
 }
 
@@ -24,8 +24,8 @@ impl ClimberProfile {
       name: String
       ,height: Option<u8>
       ,wingspan: Option<u8>
-      ,max_grade: VGrade
-      ,flash_grade: VGrade) -> Self {
+      ,flash_grade: VGrade
+      ,max_grade: VGrade) -> Self {
     Self { name, height, wingspan, max_grade, flash_grade, default_feature_preferences: HashMap::new() }
   } 
 

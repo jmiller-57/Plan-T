@@ -15,6 +15,14 @@ impl Preference {
       None
     }
   }
+
+  pub fn weight(&self) -> f64 {
+    self.weight
+  }
+
+  pub fn veto(&self) -> bool {
+    self.veto
+  } 
 }
 
 #[cfg(test)]
