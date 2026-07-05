@@ -1,11 +1,16 @@
 use std::collections::{HashMap, HashSet};
 use crate::{
-  feature::Feature, 
-  grade::*, 
-  preference::Preference,
-  profile::ClimberProfile, 
-  session::{GradeDesire, SessionIntent, SessionMode}
+  feature::Feature, grade::*, preference::Preference, problem::Problem, profile::ClimberProfile, session::{GradeDesire, SessionIntent, SessionMode}
 };
+
+pub fn problem_score(problem: &Problem, profile: &ClimberProfile, session: &SessionIntent) -> Option<f64> {
+  let grade = problem.grade()?;
+  let range = effective_range(session.grade_desire(), profile);
+  let g = grade_fit(grade, range);
+  let mult = feature_fit(problem.features(), session, profile.default_feature_preferences())?;
+
+  Some(g * mult)
+}
 
 pub fn grade_fit(grade: VGrade, range: GradeRange) -> f64 {
   if in_range(grade, range) {
@@ -99,7 +104,7 @@ pub fn effective_range(grade_desire: GradeDesire, profile: &ClimberProfile) -> G
 
 #[cfg(test)]
 mod tests {
-  use crate::session::{GradeDesire::{Explicit, FromMode}, SessionMode::*};
+  use crate::{problem::ProblemStatus, session::{GradeDesire::{Explicit, FromMode}, SessionMode::*}};
   use super::*;
 
   #[test]
@@ -220,5 +225,126 @@ mod tests {
 
     assert_eq!(effective_range(project, &pro), GradeRange::new(VGrade::V(16), VGrade::V(18)).unwrap());
     assert_eq!(effective_range(explicit, &pro), GradeRange::new(VGrade::V(6), VGrade::V(9)).unwrap());
+  }
+
+  #[test]
+  fn validate_problem_score_in_grade_liked() {
+    let mut in_grade_liked = Problem::new(Some(String::from("In Liked")), Some(VGrade::V(8)), ProblemStatus::Established);
+    in_grade_liked.add_feature(Feature::HeightDependent);
+
+    let explicit = Explicit(GradeRange::new(VGrade::V(6), VGrade::V(9)).unwrap());
+    let mut session = SessionIntent::new();
+    session.set_grade_desire(explicit);
+
+    let mut cp = ClimberProfile::new(
+      String::from("Jonny")
+      , Some(71), Some(73)
+      , VGrade::V(8)
+      , VGrade::V(12)
+    );
+    cp.set_feature_preference(Feature::HeightDependent, Preference::new(1.0, false).unwrap());
+
+    assert!(problem_score(&in_grade_liked, &cp, &session).unwrap() > 1.0);
+  }
+
+  #[test]
+  fn validate_problem_score_in_grade_disliked() {
+    let mut in_grade_disliked = Problem::new(Some(String::from("In Disliked")), Some(VGrade::V(8)), ProblemStatus::Established);
+    in_grade_disliked.add_feature(Feature::Highball);
+
+    let explicit = Explicit(GradeRange::new(VGrade::V(6), VGrade::V(9)).unwrap());
+    let mut session = SessionIntent::new();
+    session.set_grade_desire(explicit);
+
+    let mut cp = ClimberProfile::new(
+      String::from("Jonny")
+      , Some(71), Some(73)
+      , VGrade::V(8)
+      , VGrade::V(12)
+    );
+    cp.set_feature_preference(Feature::Highball, Preference::new(-1.0, false).unwrap());
+
+    assert!(problem_score(&in_grade_disliked, &cp, &session).unwrap() < 1.0);
+  }
+
+  #[test]
+  fn validate_problem_score_unkown_grade() {
+    let uknown_grade = Problem::new(Some(String::from("Unknown Grade")), None, ProblemStatus::Established);
+
+    let explicit = Explicit(GradeRange::new(VGrade::V(6), VGrade::V(9)).unwrap());
+    let mut session = SessionIntent::new();
+    session.set_grade_desire(explicit);
+
+    let cp = ClimberProfile::new(
+      String::from("Jonny")
+      , Some(71), Some(73)
+      , VGrade::V(8)
+      , VGrade::V(12)
+    );
+
+    assert_eq!(problem_score(&uknown_grade, &cp, &session), None);
+  }
+
+  #[test]
+  fn validate_problem_score_vetoed_feature() {
+    let mut vetoed = Problem::new(Some(String::from("Vetoed")), Some(VGrade::V(8)), ProblemStatus::Established);
+    vetoed.add_feature(Feature::BadLanding);
+
+    let explicit = Explicit(GradeRange::new(VGrade::V(6), VGrade::V(9)).unwrap());
+    let mut session = SessionIntent::new();
+    session.set_grade_desire(explicit);
+
+    let mut cp = ClimberProfile::new(
+      String::from("Jonny")
+      , Some(71), Some(73)
+      , VGrade::V(8)
+      , VGrade::V(12)
+    );
+
+    cp.set_feature_preference(Feature::BadLanding, Preference::new(0.0, true).unwrap());
+
+    assert_eq!(problem_score(&vetoed, &cp, &session), None);
+  }
+
+  #[test]
+  fn validate_problem_score_way_off_grade_liked() {
+    let mut off_grade_liked = Problem::new(Some(String::from("Off Liked")), Some(VGrade::V(16)), ProblemStatus::Established);
+    off_grade_liked.add_feature(Feature::HeightDependent);
+
+    let explicit = Explicit(GradeRange::new(VGrade::V(6), VGrade::V(9)).unwrap());
+    let mut session = SessionIntent::new();
+    session.set_grade_desire(explicit);
+
+    let mut cp = ClimberProfile::new(
+      String::from("Jonny")
+      , Some(71), Some(73)
+      , VGrade::V(8)
+      , VGrade::V(12)
+    );
+
+    cp.set_feature_preference(Feature::HeightDependent, Preference::new(1.0, false).unwrap());
+
+    assert!(problem_score(&off_grade_liked, &cp, &session).unwrap() < 1.0);
+  }
+
+  #[test]
+  fn validate_problem_score_near_off_grade_liked() {
+    let mut off_grade_liked = Problem::new(Some(String::from("Off Liked")), Some(VGrade::V(11)), ProblemStatus::Established);
+    off_grade_liked.add_feature(Feature::HeightDependent);
+
+    let explicit = Explicit(GradeRange::new(VGrade::V(6), VGrade::V(9)).unwrap());
+    let mut session = SessionIntent::new();
+    session.set_grade_desire(explicit);
+
+    let mut cp = ClimberProfile::new(
+      String::from("Jonny")
+      , Some(71), Some(73)
+      , VGrade::V(8)
+      , VGrade::V(12)
+    );
+
+    cp.set_feature_preference(Feature::HeightDependent, Preference::new(1.0, false).unwrap());
+
+    assert!(problem_score(&off_grade_liked, &cp, &session).unwrap() < 1.0);
   }
 }
