@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use crate::{
-  feature::Feature, grade::*, preference::Preference, problem::Problem, profile::ClimberProfile, session::{GradeDesire, SessionIntent, SessionMode}
+  feature::Feature, grade::*, preference::Preference, problem::{Problem, Stars}, profile::ClimberProfile, session::{GradeDesire, SessionIntent, SessionMode}
 };
 
 pub fn problem_score(problem: &Problem, profile: &ClimberProfile, session: &SessionIntent) -> Option<f64> {
@@ -8,11 +8,12 @@ pub fn problem_score(problem: &Problem, profile: &ClimberProfile, session: &Sess
   let range = effective_range(session.grade_desire(), profile);
   let g = grade_fit(grade, range);
   let mult = feature_fit(problem.features(), session, profile.default_feature_preferences())?;
+  let q = quality_factor(problem.stars());
 
-  Some(g * mult)
+  Some(g * mult * q)
 }
 
-pub fn grade_fit(grade: VGrade, range: GradeRange) -> f64 {
+fn grade_fit(grade: VGrade, range: GradeRange) -> f64 {
   if in_range(grade, range) {
     1.0
   } else {
@@ -20,7 +21,7 @@ pub fn grade_fit(grade: VGrade, range: GradeRange) -> f64 {
   }
 }
 
-pub fn feature_fit(
+fn feature_fit(
     features: &HashSet<Feature>
     ,session: &SessionIntent
     ,defaults: &HashMap<Feature, Preference>
@@ -42,6 +43,19 @@ pub fn feature_fit(
   } else {
     let w = weight_sum / f64::from(count);
     Some(1.0 + w * K)
+  }
+}
+
+fn quality_factor(stars: Option<Stars>) -> f64 {
+  match stars.map(|s| s.count()) {
+    None    => 1.0,   // unknown -> neutral
+    Some(0) => 0.25,
+    Some(1) => 0.50,
+    Some(2) => 0.75,
+    Some(3) => 1.0,   // neutral pivot
+    Some(4) => 1.5,
+    Some(5) => 2.0,
+    Some(_) => 1.0,   // unreachable (Stars validates ≤5), safe default
   }
 }
 
@@ -106,6 +120,16 @@ pub fn effective_range(grade_desire: GradeDesire, profile: &ClimberProfile) -> G
 mod tests {
   use crate::{problem::ProblemStatus, session::{GradeDesire::{Explicit, FromMode}, SessionMode::*}};
   use super::*;
+  #[test]
+  fn validate_quality_factor() {
+    assert_eq!(quality_factor(Stars::new(0)), 0.25);
+    assert_eq!(quality_factor(Stars::new(1)), 0.5);
+    assert_eq!(quality_factor(Stars::new(2)), 0.75);
+    assert_eq!(quality_factor(Stars::new(3)), 1.0);
+    assert_eq!(quality_factor(Stars::new(4)), 1.5);
+    assert_eq!(quality_factor(Stars::new(5)), 2.0);
+    assert_eq!(quality_factor(None), 1.0);
+  }
 
   #[test]
   fn within_range() {
@@ -346,5 +370,23 @@ mod tests {
     cp.set_feature_preference(Feature::HeightDependent, Preference::new(1.0, false).unwrap());
 
     assert!(problem_score(&off_grade_liked, &cp, &session).unwrap() < 1.0);
+  }
+
+  #[test]
+  fn validate_problem_score_classic_in_grade() {
+    let mut classic = Problem::new(Some(String::from("Classic")), Some(VGrade::V(8)), ProblemStatus::Established);
+    classic.set_stars(Stars::new(5).unwrap());
+    let explicit = Explicit(GradeRange::new(VGrade::V(6), VGrade::V(9)).unwrap());
+    let mut session = SessionIntent::new();
+    session.set_grade_desire(explicit);
+
+    let cp = ClimberProfile::new(
+      String::from("Jonny")
+      , Some(71), Some(73)
+      , VGrade::V(8)
+      , VGrade::V(12)
+    );
+
+    assert!(problem_score(&classic, &cp, &session).unwrap() >= 2.0);
   }
 }
