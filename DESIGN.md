@@ -27,14 +27,34 @@ sun/shade, weather, and each climber's preferences and daily intent.
 - **Sun feature** (sun.rs): `SunPosition::calculate(coords, DateTime<Utc>)`
   (declination + equation of time + hour angle + spherical trig, NOAA-validated),
   and `SunPosition::cover_for(aspect) -> SunCover` (`Sun`/`Glancing`/`Shade`).
+- **Stars/quality** (problem.rs): `Stars` value object (validated `0..=5`, canonical
+  superset scale); `Problem` holds `Option<Stars>`.
+- **People layer:** `ClimberProfile` (profile.rs — stable facts + max/flash grade +
+  default feature preferences), `Preference` (preference.rs — signed `-1..=1` weight
+  + separate `veto` flag), `SessionIntent` (session.rs — per-feature overrides +
+  `GradeDesire`), `GradeDesire` = `Explicit(GradeRange) | FromMode(SessionMode)`.
+- **Scoring engine — single problem** (scoring.rs): `problem_score(problem, profile,
+  session) -> Option<f64>`, combining three factors multiplicatively with two `None`
+  gates (unknown grade, veto):
+  - `grade_fit(grade, range)` → `0..=1`, flat in-range, asymmetric linear falloff
+    (easier misses penalized less than harder).
+  - `feature_fit(...)` → veto gates to `None`; else `1 + avg(weights)·K` (K=0.5).
+  - `quality_factor(stars)` → hardcoded table (None/2★ neutral 1.0; 0★=0.25 … 5★=2.0).
+  - `effective_range(desire, profile)` resolves `GradeDesire` (Explicit or mode-derived
+    band from flash/max) into a concrete `GradeRange`.
 
 **Not yet built (candidates for next sessions):**
-- Remaining attributes: stars/quality, steepness, guidebook `number`, style tags.
+- `area_score` (aggregate problem scores up the hierarchy — where *density* emerges).
+- Remaining attributes: steepness, guidebook `number`, style tags.
 - Travel: start location, drive + approach legs, totals.
-- People & session (Part 2): `ClimberProfile`, `SessionIntent`, `DayContext`, weather.
-- The engine (Part 3): `problem_score → area_score → group_area_score → day_plan`.
+- `DayContext` (date/time/weather) — needed to fold `SunCover` into scoring.
+- Group layer: `GroupSession` + group aggregation (`weight`/`rest_bar` tunables).
+- `day_plan` (sequence areas across time blocks).
 - Real Tahoe data entry (only a tiny Kingsbury sample exists), and a CLI interface.
 - The local-time → UTC boundary conversion (`chrono-tz`).
+- **Tunable knobs deferred:** quality weight (trip vs. local crag), asymmetric
+  feature K (boost vs. penalty strength). Currently hardcoded.
+- Personal tick-list / per-climber send status (filter "only unclimbed" etc.).
 
 ---
 
@@ -246,6 +266,28 @@ walk" is a real trade-off):
 
 ## Decisions log
 
+- **Scoring is multiplicative, grade-dominant:** `problem_score = grade_fit ×
+  feature_multiplier × quality_factor`, with two hard gates → `None` (unknown grade,
+  veto). Multiplicative (not additive) so grade *gates* — a loved feature or classic
+  can't rescue a wildly off-grade problem (grade_fit→0 zeroes the product) — while
+  still modulating *within* grade-appropriate problems. Near-misses (partial
+  grade_fit) *can* be lifted by quality/features, which is the intended "stretch a
+  grade for a 5-star" trip behavior.
+- **Preference = signed weight + separate veto flag** (not one overloaded scale):
+  weight `-1..=1` (0 neutral, negative penalizes) is the *soft* ranking nudge; `veto`
+  is a *categorical* hard-exclude. Two distinct concerns → two fields (avoids the
+  "0 means veto" float-equality trap; keeps "avoid" ≠ "never").
+- **Profile defaults + session overrides (inherit↓):** `effective_preference =
+  session.override(f).or(profile.default(f))` — per-item, resolved at the caller
+  (the profile map is passed in), same shape as `effective_aspect`.
+- **`GradeDesire` sum type:** a session specifies grades *either* as an `Explicit`
+  range *or* `FromMode` (derive a band from profile flash/max). One-of, so the
+  redundant/contradictory "explicit range + mode" combination is unrepresentable.
+  Mode is a range-*producer*, not a scoring-time input — so `grade_fit` needs only
+  a resolved range, no mode.
+- **Missing data stays neutral, not zero, in scoring:** unrated stars (`None`) →
+  quality factor 1.0 (neutral), distinct from a known `Some(0★)` → 0.25 penalty.
+  Source conventions (blank→0★, guidebook scale differences) resolved at import.
 - **Language:** Rust.
 - **Architecture:** engine (pure data model + scoring) separated from interface
   (CLI now; web/mobile later).

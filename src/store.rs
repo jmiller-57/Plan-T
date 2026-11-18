@@ -120,6 +120,22 @@ impl Catalog {
   pub fn new() -> Self {
     Self::default()
   }
+
+  pub fn problems_under_area(&self, area_id: AreaId) -> Vec<ProblemId> {
+    let mut out: Vec<ProblemId> = Vec::new();
+
+    if let Some(area) = self.areas.get(area_id) {                               // Hop 1: AreaId -> Area
+      for &sector_id in area.sectors() {
+        for boulder_id in self.sectors.all_boulders(sector_id) {    // Hop 2: recurse over Sub-Sectors
+          if let Some(boulder) = self.boulders.get(boulder_id) {            // Hop 3: BoulderId -> Boulder
+            out.extend(boulder.problems());                                     // Collect ProblemIds
+          }
+        }
+      }
+    }
+
+    out
+  }
 }
 
 #[cfg(test)]
